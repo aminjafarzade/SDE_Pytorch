@@ -1,4 +1,4 @@
-# Score SDE Pytorch – Homework Version
+# Score SDE Pytorch – Project Version
 
 This repo is a **homework-friendly fork** of `score_sde_pytorch`:
 
@@ -64,25 +64,3 @@ The --no-deps flag is important:
 Keeps typing-extensions at a version compatible with PyTorch 2.3.
 
 Avoids pip trying to downgrade things to satisfy old TF 2.4 metadata.
-
-1.3. Quick sanity check
-bash
-Copy code
-python - << 'EOF'
-import torch, typing_extensions as te
-import tensorflow as tf, tensorflow_gan as tfgan
-
-print("torch:", torch.__version__, "cuda?", torch.cuda.is_available())
-print("typing_extensions:", te.__version__, "has TypeGuard?", hasattr(te, "TypeGuard"))
-print("tensorflow:", tf.__version__)
-print("tfgan:", tfgan.__version__)
-EOF
-You should see:
-
-torch: 2.3.x cuda? True
-
-typing_extensions: 4.x has TypeGuard? True
-
-tensorflow: 2.4.0
-
-tfgan: 2.0.0
