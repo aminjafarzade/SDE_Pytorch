@@ -1,0 +1,155 @@
+name: sde_2
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ---- Core Python & MKL ----
+  - python=3.8
+  - mkl<2024.1
+  - mkl-devel<2024.1
+
+  # ---- Core scientific stack ----
+  - numpy
+  - scipy=1.7.3
+  - pandas=1.3.5
+  - scikit-learn=1.0.2
+  - matplotlib=3.5.3
+  - seaborn=0.12.2
+  - h5py=2.10.0
+
+  # ---- Jupyter / IPython ----
+  - ipykernel=6.16.2
+  - ipython=7.33.0
+  - jupyter_client=7.4.9
+  - jupyter_core=4.11.1
+  - traitlets=5.9.0
+  - tornado=6.2
+  - pygments
+  - prompt_toolkit
+
+  # ---- PyTorch + CUDA for L40S (Ada) ----
+  - pytorch=2.3.*
+  - pytorch-cuda=12.1  # pulls the right CUDA runtime
+
+  # ---- General utilities ----
+  - tqdm
+  - psutil
+  - requests
+  - beautifulsoup4
+  - soupsieve
+  - joblib
+  - future
+  - protobuf=3.20.3
+  - etils
+  - ninja
+
+  # ---- pip for extra Python-only deps ----
+  - pip
+
+  - pip:
+      # Logging / config / misc
+      - absl-py==0.10.0
+      - astunparse==1.6.3
+      - attrs==24.2.0
+      - backcall==0.2.0
+      - cachetools==4.2.4
+      - certifi==2024.8.30
+      - charset-normalizer==3.4.0
+      - cloudpickle==2.2.1
+      - contextlib2==21.6.0
+      - cycler==0.11.0
+      - debugpy==1.6.3
+      - decorator==5.1.1
+      - dill==0.3.7
+      - dm-tree==0.1.8
+      - entrypoints==0.4
+      - et-xmlfile==1.1.0
+      - filelock==3.12.2
+      - flatbuffers==1.12
+      - fonttools==4.38.0
+      - gast==0.3.3
+      - gdown==4.7.3
+      - google-auth==1.35.0
+      - google-auth-oauthlib==0.4.6
+      - google-pasta==0.2.0
+      - googleapis-common-protos==1.65.0
+      - grpcio==1.32.0
+      - idna==3.10
+      - importlib-metadata==6.7.0
+      - importlib-resources==5.12.0
+      - jedi==0.19.1
+      - Keras-Preprocessing==1.1.2
+      - kiwisolver==1.4.5
+      - Markdown==3.4.4
+      - MarkupSafe==2.1.5
+      - ml-collections==0.1.0
+      - nest_asyncio==1.6.0
+      - oauthlib==3.2.2
+      - openpyxl==3.1.3
+      - opt-einsum==3.3.0
+      - packaging==23.2
+      - parso==0.8.4
+      - pexpect==4.9.0
+      - pickleshare==0.7.5
+      - Pillow==9.5.0
+      - promise==2.3
+      - pyasn1==0.5.1
+      - pyasn1-modules==0.3.0
+      - pyparsing==3.1.4
+      - PySocks==1.7.1
+      - python-dateutil==2.9.0
+      - pytz==2024.2
+      - PyYAML==6.0.1
+      - pyzmq==23.2.0
+      - requests-oauthlib==2.0.0
+      - rsa==4.9
+      - six==1.15.0
+
+      # TensorBoard (for logging and profiling), but NOT TensorFlow itself
+      - tensorboard==2.4.1
+      - tensorboard-plugin-wit==1.8.1
+
+      - termcolor==1.1.0
+      - threadpoolctl==3.1.0
+      - typeguard==2.13.3
+
+      # IMPORTANT: make sure typing_extensions is new enough for PyTorch 2.x
+      - typing-extensions>=4.8.0
+
+      - urllib3==2.0.7
+      - wcwidth==0.2.10
+      - Werkzeug==2.2.3
+      - wrapt==1.12.1
+      - zipp==3.15.0
+
+      # Optional: PyTorch + TensorBoard profiling
+      - torch-tb-profiler==0.4.3
+
+
+# -------------------------------------------------------------------
+# AFTER CREATING THE ENV, RUN THESE EXTRA COMMANDS MANUALLY:
+#
+#   conda activate sde_2
+#
+#   # Install TensorFlow + TF-GAN + friends WITHOUT touching deps
+#   pip install \
+#     "tensorflow==2.4.0" \
+#     "tensorflow-estimator==2.4.0" \
+#     "tensorflow-gan==2.0.0" \
+#     "tensorflow-datasets==3.1.0" \
+#     "tensorflow-hub==0.16.0" \
+#     "tensorflow-probability==0.12.2" \
+#     "tensorflow-io==0.34.0" \
+#     "tensorflow-io-gcs-filesystem==0.34.0" \
+#     "tensorflow-metadata==1.12.0" \
+#     "tensorflow-addons==0.12.0" \
+#     --no-deps
+#
+# This keeps:
+#   - PyTorch 2.3 + CUDA 12.1 happy (needs typing-extensions>=4.8.0)
+#   - TensorFlow 2.4 stack present for TFDS, TF-GAN, Inception metrics
+#   - No dependency tug-of-war over typing-extensions
+# -------------------------------------------------------------------
