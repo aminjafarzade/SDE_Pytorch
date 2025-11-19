@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Training NCSN++ on CIFAR-10 with SMLD."""
+"""Training NCSN++ on CIFAR-10 with SMLD - ODE version (probability flow)."""
 
 from configs.default_cifar10_configs import get_default_configs
 
@@ -26,11 +26,12 @@ def get_config():
   training.sde = 'vesde'
   training.continuous = False
 
-  # sampling
+  # sampling - ODE version (probability flow)
   sampling = config.sampling
   sampling.method = 'pc'
   sampling.predictor = 'reverse_diffusion'
   sampling.corrector = 'langevin'
+  sampling.probability_flow = True  # ODE mode
 
   # model
   model = config.model
@@ -63,3 +64,4 @@ def get_config():
   evaluate.end_ckpt = 16
 
   return config
+

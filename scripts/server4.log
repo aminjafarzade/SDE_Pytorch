@@ -1,0 +1,13 @@
+WARNING:tensorflow:From /home/juhyeong/anaconda3/envs/sde_2/lib/python3.8/site-packages/tensorflow_gan/python/estimator/tpu_gan_estimator.py:42: The name tf.estimator.tpu.TPUEstimator is deprecated. Please use tf.compat.v1.estimator.tpu.TPUEstimator instead.
+
+INFO - main.py - 2025-11-19 21:15:28,876 - Starting in EVAL mode
+INFO - run_lib.py - 2025-11-19 21:15:28,876 - === [Eval] Starting evaluation ===
+INFO - run_lib.py - 2025-11-19 21:15:28,876 - [Eval] eval_dir = /home/juhyeong/SDE_Pytorch/exp/vp/cifar10_ddpmpp/eval
+INFO - run_lib.py - 2025-11-19 21:15:30,979 - [Eval] checkpoint_dir = /home/juhyeong/SDE_Pytorch/exp/vp/cifar10_ddpmpp/checkpoints
+INFO - run_lib.py - 2025-11-19 21:15:30,979 - [Eval] Building sampling function & Inception model
+INFO - resolver.py - 2025-11-19 21:15:30,980 - Using /tmp/tfhub_modules to cache modules.
+INFO - run_lib.py - 2025-11-19 21:15:33,607 - [Eval] Available checkpoints: [6]
+INFO - run_lib.py - 2025-11-19 21:15:33,608 - [Eval] Using checkpoints from 6 to 6
+INFO - run_lib.py - 2025-11-19 21:15:33,608 - [Eval] Loading checkpoint /home/juhyeong/SDE_Pytorch/exp/vp/cifar10_ddpmpp/checkpoints/checkpoint_6.pth
+INFO - run_lib.py - 2025-11-19 21:15:34,540 - [Eval] Generating samples for ckpt 6
+INFO - run_lib.py - 2025-11-19 21:15:34,541 - [Eval] Sampling batch; collected 0 / 50000 images

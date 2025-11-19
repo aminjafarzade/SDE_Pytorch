@@ -63,4 +63,9 @@ def get_config():
   model.fourier_scale = 16
   model.conv_size = 3
 
+  # evaluation - adjust for available checkpoint
+  evaluate = config.eval
+  evaluate.begin_ckpt = 6
+  evaluate.end_ckpt = 6
+
   return config

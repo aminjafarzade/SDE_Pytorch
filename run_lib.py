@@ -22,7 +22,45 @@ import os
 import time
 
 import numpy as np
+
+# ---------------------------------------------------------------------------
+# NumPy <-> TensorFlow 2.4 compatibility shim
+#
+# TensorFlow 2.4 still expects deprecated NumPy aliases like np.object,
+# np.bool, np.int, etc., which were removed in NumPy>=1.20. We recreate
+# those aliases here so that TF can import cleanly while we use a newer
+# NumPy version that is compatible with PyTorch 2.3.
+# ---------------------------------------------------------------------------
+_deprecated_aliases = {
+    "object": object,
+    "bool": bool,
+    "int": int,
+    "float": float,
+    "complex": complex,
+}
+for _name, _target in _deprecated_aliases.items():
+  if not hasattr(np, _name):
+    setattr(np, _name, _target)  # type: ignore[attr-defined]
+
+import os
+# Save CUDA_VISIBLE_DEVICES for PyTorch
+cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+# Initialize PyTorch CUDA first to avoid conflicts
+import torch
+if cuda_visible_devices and torch.cuda.is_available():
+    # Pre-initialize CUDA context for PyTorch
+    torch.zeros(1).cuda()
+# Now import TensorFlow with GPU hidden
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
+# Force TensorFlow to use CPU only
+try:
+    tf.config.set_visible_devices([], 'GPU')
+except:
+    pass
+# Restore CUDA_VISIBLE_DEVICES for PyTorch
+os.environ['CUDA_VISIBLE_DEVICES'] = cuda_visible_devices
 import tensorflow_gan as tfgan
 import logging
 # Keep the import below for registering all model definitions
@@ -103,6 +141,32 @@ def save_image_local(tensor, fp):
 
   img = Image.fromarray(t.numpy())
   # PIL can save to a filename or a binary file-like object
+  img.save(fp, format="PNG")
+
+
+def save_image_no_torch_numpy(tensor, fp):
+  """Save a single (C,H,W) tensor as PNG without using Tensor.numpy().
+
+  This avoids the PyTorch->NumPy bridge that is broken in our environment.
+  """
+  if not isinstance(tensor, torch.Tensor):
+    raise TypeError("Expected a torch.Tensor for save_image_no_torch_numpy")
+
+  t = tensor.detach().cpu()
+
+  # If values look like [-1, 1], map to [0, 1]
+  if t.min() < 0:
+    t = (t + 1) / 2.0
+
+  t = t.clamp(0.0, 1.0)
+  t = (t * 255.0).to(torch.uint8)
+
+  if t.dim() != 3:
+    raise ValueError("Expected 3D tensor (C, H, W) for save_image_no_torch_numpy")
+  t = t.permute(1, 2, 0)  # C,H,W -> H,W,C
+
+  arr = np.array(t.tolist(), dtype=np.uint8)
+  img = Image.fromarray(arr)
   img.save(fp, format="PNG")
 
 
@@ -468,6 +532,20 @@ def evaluate(config,
     # ---------------- Sampling + FID / IS ------------
     if config.eval.enable_sampling:
       logging.info("[Eval] Generating samples for ckpt %d", ckpt)
+    # Fast path: when we only care about generating images (e.g., num_samples=1),
+    # skip TF Inception / FID and just save a few PNGs to eval_dir.
+    if config.eval.num_samples <= 1:
+      samples, _ = sampling_fn(score_model)  # (N, C, H, W)
+      n_save = min(4, samples.shape[0])
+      for i in range(n_save):
+        img_tensor = samples[i]
+        img_path = os.path.join(eval_dir, f"ckpt_{ckpt}_sample_{i}.png")
+        with tf.io.gfile.GFile(img_path, "wb") as fout:
+          save_image_no_torch_numpy(img_tensor, fout)
+      logging.info(
+          "[Eval] Saved %d sample image(s) for ckpt %d under %s",
+          n_save, ckpt, eval_dir)
+    else:
       all_samples = []
       all_logits = []
       all_pools = []

@@ -89,7 +89,14 @@ def create_model(config):
   """Create the score model."""
   model_name = config.model.name
   score_model = get_model(model_name)(config)
-  score_model = score_model.to(config.device)
+  # Create on CPU first to avoid CUDA initialization conflicts with TensorFlow
+  score_model = score_model.cpu()
+  # Then move to target device if it's CUDA
+  if config.device.type == 'cuda':
+    # Use empty_cache and synchronize to ensure clean CUDA state
+    if torch.cuda.is_available():
+      torch.cuda.empty_cache()
+    score_model = score_model.to(config.device)
   score_model = torch.nn.DataParallel(score_model)
   return score_model
 

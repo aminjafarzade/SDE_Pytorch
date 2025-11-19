@@ -332,24 +332,32 @@ class NoneCorrector(Corrector):
 
 def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, continuous):
   """A wrapper that configures and returns the update function of predictors."""
+  # Ensure input is float32
+  x = x.float() if x.dtype != torch.float32 else x
   score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
   if predictor is None:
     # Corrector-only sampler
     predictor_obj = NonePredictor(sde, score_fn, probability_flow)
   else:
     predictor_obj = predictor(sde, score_fn, probability_flow)
-  return predictor_obj.update_fn(x, t)
+  x, x_mean = predictor_obj.update_fn(x, t)
+  # Ensure output is float32
+  return x.float(), x_mean.float()
 
 
 def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_steps):
   """A wrapper tha configures and returns the update function of correctors."""
+  # Ensure input is float32
+  x = x.float() if x.dtype != torch.float32 else x
   score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
   if corrector is None:
     # Predictor-only sampler
     corrector_obj = NoneCorrector(sde, score_fn, snr, n_steps)
   else:
     corrector_obj = corrector(sde, score_fn, snr, n_steps)
-  return corrector_obj.update_fn(x, t)
+  x, x_mean = corrector_obj.update_fn(x, t)
+  # Ensure output is float32
+  return x.float(), x_mean.float()
 
 
 def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
@@ -396,8 +404,8 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
       Samples, number of function evaluations.
     """
     with torch.no_grad():
-      # Initial sample
-      x = sde.prior_sampling(shape).to(device)
+      # Initial sample - ensure float32 dtype to match model
+      x = sde.prior_sampling(shape).to(device).float()
       timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
 
       for i in range(sde.N):
@@ -459,7 +467,7 @@ def get_ode_sampler(sde, shape, inverse_scaler,
       # Initial sample
       if z is None:
         # If not represent, sample the latent code from the prior distibution of the SDE.
-        x = sde.prior_sampling(shape).to(device)
+        x = sde.prior_sampling(shape).to(device).float()
       else:
         x = z
 

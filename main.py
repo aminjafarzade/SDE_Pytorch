@@ -15,13 +15,24 @@
 
 """Training and evaluation"""
 
+import os
+# Save CUDA_VISIBLE_DEVICES for PyTorch before TensorFlow import
+cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import run_lib
 from absl import app
 from absl import flags
 from ml_collections.config_flags import config_flags
 import logging
-import os
 import tensorflow as tf
+# Force TensorFlow to use CPU only (don't interfere with PyTorch GPU)
+try:
+    tf.config.set_visible_devices([], 'GPU')
+except:
+    pass
+# Restore CUDA_VISIBLE_DEVICES for PyTorch
+os.environ['CUDA_VISIBLE_DEVICES'] = cuda_visible_devices
 import sys
 
 FLAGS = flags.FLAGS
