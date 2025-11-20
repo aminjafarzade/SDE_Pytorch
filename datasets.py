@@ -15,11 +15,24 @@
 
 # pylint: skip-file
 """Return training and evaluation/test datasets from config files."""
-# import jax
-import torch
 import tensorflow as tf
 import tensorflow_datasets as tfds
-tf.config.set_visible_devices([], 'GPU')
+
+try:
+  import jax  # pylint: disable=g-import-not-at-top
+except ImportError:  # pragma: no cover
+  jax = None
+
+
+def _device_count():
+  """Return available accelerator count without requiring JAX."""
+  if jax is None:
+    return 1
+  try:
+    return max(1, jax.device_count())
+  except Exception:  # pragma: no cover
+    return 1
+
 
 def get_data_scaler(config):
   """Data normalizer. Assume data are always in [0, 1]."""
@@ -69,7 +82,8 @@ def central_crop(image, size):
   return tf.image.crop_to_bounding_box(image, top, left, size, size)
 
 
-def get_dataset(config, uniform_dequantization=False, evaluation=False):
+def get_dataset(config, uniform_dequantization=False, evaluation=False,
+                drop_remainder=True, data_dir=None, download_config=None):
   """Create data loaders for training and evaluation.
 
   Args:
@@ -82,29 +96,23 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
   """
   # Compute batch size for this worker.
   batch_size = config.training.batch_size if not evaluation else config.eval.batch_size
-  # if batch_size % jax.device_count() != 0:
-  #   raise ValueError(f'Batch sizes ({batch_size} must be divided by'
-  #                    f'the number of devices ({jax.device_count()})')
-
-  if torch.cuda.is_available():
-    num_devices = torch.cuda.device_count()
-  else:
-      num_devices = 1
-
-  if batch_size % num_devices != 0:
-      raise ValueError(
-          f"Batch size ({batch_size}) must be divisible by the number of GPUs ({num_devices})."
-      )
-
+  device_count = _device_count()
+  if batch_size % device_count != 0:
+    raise ValueError(f'Batch sizes ({batch_size} must be divided by'
+                     f'the number of devices ({device_count})')
 
   # Reduce this when image resolution is too large and data pointer is stored
   shuffle_buffer_size = 10000
   prefetch_size = tf.data.experimental.AUTOTUNE
   num_epochs = None if not evaluation else 1
 
+  builder_kwargs = {}
+  if data_dir is not None:
+    builder_kwargs['data_dir'] = data_dir
+
   # Create dataset builders for each dataset.
   if config.data.dataset == 'CIFAR10':
-    dataset_builder = tfds.builder('cifar10')
+    dataset_builder = tfds.builder('cifar10', **builder_kwargs)
     train_split_name = 'train'
     eval_split_name = 'test'
 
@@ -113,7 +121,7 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
       return tf.image.resize(img, [config.data.image_size, config.data.image_size], antialias=True)
 
   elif config.data.dataset == 'SVHN':
-    dataset_builder = tfds.builder('svhn_cropped')
+    dataset_builder = tfds.builder('svhn_cropped', **builder_kwargs)
     train_split_name = 'train'
     eval_split_name = 'test'
 
@@ -122,7 +130,7 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
       return tf.image.resize(img, [config.data.image_size, config.data.image_size], antialias=True)
 
   elif config.data.dataset == 'CELEBA':
-    dataset_builder = tfds.builder('celeb_a')
+    dataset_builder = tfds.builder('celeb_a', **builder_kwargs)
     train_split_name = 'train'
     eval_split_name = 'validation'
 
@@ -133,7 +141,7 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
       return img
 
   elif config.data.dataset == 'LSUN':
-    dataset_builder = tfds.builder(f'lsun/{config.data.category}')
+    dataset_builder = tfds.builder(f'lsun/{config.data.category}', **builder_kwargs)
     train_split_name = 'train'
     eval_split_name = 'validation'
 
@@ -192,7 +200,7 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
     dataset_options.experimental_threading.max_intra_op_parallelism = 1
     read_config = tfds.ReadConfig(options=dataset_options)
     if isinstance(dataset_builder, tfds.core.DatasetBuilder):
-      dataset_builder.download_and_prepare()
+      dataset_builder.download_and_prepare(download_config=download_config)
       ds = dataset_builder.as_dataset(
         split=split, shuffle_files=True, read_config=read_config)
     else:
@@ -200,7 +208,7 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
     ds = ds.repeat(count=num_epochs)
     ds = ds.shuffle(shuffle_buffer_size)
     ds = ds.map(preprocess_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    ds = ds.batch(batch_size, drop_remainder=True)
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
     return ds.prefetch(prefetch_size)
 
   train_ds = create_dataset(dataset_builder, train_split_name)

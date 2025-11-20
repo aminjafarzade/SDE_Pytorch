@@ -15,12 +15,30 @@
 
 """Utility functions for computing FID/Inception scores."""
 
-import torch
+import logging
+import os
+import ssl
+
+import certifi
 import numpy as np
 import six
 import tensorflow as tf
 import tensorflow_gan as tfgan
-import tensorflow_hub as tfhub
+
+try:
+  import jax  # pylint: disable=g-import-not-at-top
+except ImportError:  # pragma: no cover
+  jax = None
+
+# Ensure TF-Hub downloads trust certifi's CA bundle when macOS certificates
+# are missing (common on fresh Python installations).
+_ROOT = os.path.dirname(__file__)
+_CERT_PATH = certifi.where()
+os.environ.setdefault("SSL_CERT_FILE", _CERT_PATH)
+os.environ.setdefault("REQUESTS_CA_BUNDLE", _CERT_PATH)
+_LOCAL_INCEPTION_DIR = os.path.join(_ROOT, "assets", "tfhub_modules", "tfgan_eval_inception")
+
+import tensorflow_hub as tfhub  # pylint: disable=g-import-not-at-top
 
 INCEPTION_TFHUB = 'https://tfhub.dev/tensorflow/tfgan/eval/inception/1'
 INCEPTION_OUTPUT = 'logits'
@@ -30,17 +48,33 @@ _DEFAULT_DTYPES = {
   INCEPTION_FINAL_POOL: tf.float32
 }
 INCEPTION_DEFAULT_IMAGE_SIZE = 299
-tf.config.set_visible_devices([], 'GPU')
-# tfgan.config.set_visible_devices([], 'GPU')
-# tfhub.config.set_visible_devices([], 'GPU')
+
+
+def _load_tfhub_module(handle):
+  """Load a TFHub module, retrying without SSL verification on failure."""
+  try:
+    return tfhub.load(handle)
+  except Exception as err:  # pylint: disable=broad-except
+    if isinstance(err, ssl.SSLCertVerificationError) or 'CERTIFICATE_VERIFY_FAILED' in str(err):
+      logging.warning("TF-Hub SSL verification failed (%s). Retrying without certificate validation.", err)
+      original_context = ssl._create_default_https_context
+      ssl._create_default_https_context = ssl._create_unverified_context
+      try:
+        return tfhub.load(handle)
+      finally:
+        ssl._create_default_https_context = original_context
+    raise
 
 
 def get_inception_model(inceptionv3=False):
   if inceptionv3:
-    return tfhub.load(
+    return _load_tfhub_module(
       'https://tfhub.dev/google/imagenet/inception_v3/feature_vector/4')
   else:
-    return tfhub.load(INCEPTION_TFHUB)
+    if os.path.isdir(_LOCAL_INCEPTION_DIR):
+      logging.info("Loading local TF-Hub inception module from %s", _LOCAL_INCEPTION_DIR)
+      return tfhub.load(_LOCAL_INCEPTION_DIR)
+    return _load_tfhub_module(INCEPTION_TFHUB)
 
 
 def load_dataset_stats(config):
@@ -124,90 +158,43 @@ def run_inception_distributed(input_tensor,
     A dictionary with key `pool_3` and `logits`, representing the pool_3 and
       logits of the inception network respectively.
   """
-  # num_tpus = jax.local_device_count()
-  # input_tensors = tf.split(input_tensor, num_tpus, axis=0)
-  # pool3 = []
-  # logits = [] if not inceptionv3 else None
-  # device_format = '/TPU:{}' if 'TPU' in str(jax.devices()[0]) else '/GPU:{}'
-  # for i, tensor in enumerate(input_tensors):
-  #   with tf.device(device_format.format(i)):
-  #     tensor_on_device = tf.identity(tensor)
-  #     res = run_inception_jit(
-  #       tensor_on_device, inception_model, num_batches=num_batches,
-  #       inceptionv3=inceptionv3)
+  if jax is None:
+    return run_inception_jit(
+      input_tensor, inception_model, num_batches=num_batches,
+      inceptionv3=inceptionv3)
 
-  #     if not inceptionv3:
-  #       pool3.append(res['pool_3'])
-  #       logits.append(res['logits'])  # pytype: disable=attribute-error
-  #     else:
-  #       pool3.append(res)
+  try:
+    num_devices = max(1, jax.local_device_count())
+    devices = jax.devices()
+  except Exception:  # pragma: no cover
+    num_devices = 1
+    devices = []
 
-  # with tf.device('/CPU'):
-  #   return {
-  #     'pool_3': tf.concat(pool3, axis=0),
-  #     'logits': tf.concat(logits, axis=0) if not inceptionv3 else None
-  #   }
-  # def run_inception_distributed(input_tensor,
-  #                             inception_model,
-  #                             num_batches=1,
-  #                             inceptionv3=False):
-  """Distribute Inception computation across available CUDA GPUs (no JAX).
-
-  Args:
-    input_tensor: The input images. Assumed to be within [0, 255].
-    inception_model: The inception network model obtained from `tfhub`.
-    num_batches: The number of batches used for dividing the input.
-    inceptionv3: If `True`, use InceptionV3, otherwise use InceptionV1.
-
-  Returns:
-    A dictionary with key `pool_3` and `logits`, as before.
-  """
-  # Number of CUDA GPUs visible to PyTorch
-  num_devices = torch.cuda.device_count()
-
-  # If no GPU or only one, just run normally
   if num_devices <= 1:
-    res = run_inception_jit(
-        input_tensor, inception_model,
-        num_batches=num_batches,
-        inceptionv3=inceptionv3)
-    if not inceptionv3:
-      return res
-    else:
-      return {
-          'pool_3': res,
-          'logits': None
-      }
+    return run_inception_jit(
+      input_tensor, inception_model, num_batches=num_batches,
+      inceptionv3=inceptionv3)
 
-  # Multi-GPU case: split batch over GPUs
   input_tensors = tf.split(input_tensor, num_devices, axis=0)
   pool3 = []
   logits = [] if not inceptionv3 else None
-
+  has_tpu = bool(devices) and any('TPU' in str(dev) for dev in devices)
+  device_format = '/TPU:{}' if has_tpu else '/GPU:{}'
   for i, tensor in enumerate(input_tensors):
-    with tf.device(f'/GPU:{i}'):
+    with tf.device(device_format.format(i)):
       tensor_on_device = tf.identity(tensor)
       res = run_inception_jit(
-          tensor_on_device,
-          inception_model,
-          num_batches=num_batches,
-          inceptionv3=inceptionv3)
+        tensor_on_device, inception_model, num_batches=num_batches,
+        inceptionv3=inceptionv3)
 
       if not inceptionv3:
         pool3.append(res['pool_3'])
-        logits.append(res['logits'])
+        logits.append(res['logits'])  # pytype: disable=attribute-error
       else:
         pool3.append(res)
 
-  with tf.device('/CPU:0'):
-    pool3_concat = tf.concat(pool3, axis=0)
-    if not inceptionv3:
-      logits_concat = tf.concat(logits, axis=0)
-    else:
-      logits_concat = None
-
+  with tf.device('/CPU'):
     return {
-        'pool_3': pool3_concat,
-        'logits': logits_concat
+      'pool_3': tf.concat(pool3, axis=0),
+      'logits': tf.concat(logits, axis=0) if not inceptionv3 else None
     }
-

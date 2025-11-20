@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import torch
 from torch import nn
@@ -8,13 +9,21 @@ from torch.utils.cpp_extension import load
 
 
 module_path = os.path.dirname(__file__)
-fused = load(
-    "fused",
-    sources=[
-        os.path.join(module_path, "fused_bias_act.cpp"),
-        os.path.join(module_path, "fused_bias_act_kernel.cu"),
-    ],
-)
+fused = None
+if torch.cuda.is_available():
+    try:
+        fused = load(
+            "fused",
+            sources=[
+                os.path.join(module_path, "fused_bias_act.cpp"),
+                os.path.join(module_path, "fused_bias_act_kernel.cu"),
+            ],
+        )
+    except (OSError, RuntimeError) as err:
+        warnings.warn(
+            f"Falling back to PyTorch bias act kernels. CUDA build failed with: {err}",
+            RuntimeWarning,
+        )
 
 
 class FusedLeakyReLUFunctionBackward(Function):
@@ -84,7 +93,7 @@ class FusedLeakyReLU(nn.Module):
 
 
 def fused_leaky_relu(input, bias, negative_slope=0.2, scale=2 ** 0.5):
-    if input.device.type == "cpu":
+    if input.device.type == "cpu" or fused is None:
         rest_dim = [1] * (input.ndim - bias.ndim - 1)
         return (
             F.leaky_relu(
