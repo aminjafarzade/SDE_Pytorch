@@ -1,0 +1,30 @@
+# Deblurring Hyperparameters & Configuration
+# Date: 2025-12-03
+# Task: CelebAHQ 256 Deblurring (Gaussian Kernel)
+
+# --- Core Parameters ---
+Gradient Scale: 0.05
+SNR: 0.16
+Corrector Steps (n_steps): 1
+
+# --- Model & SDE ---
+Model: NCSN++ (ncsnpp)
+Checkpoint: checkpoint_48.pth
+SDE: VESDE
+  - sigma_min: 0.01
+  - sigma_max: 348
+  - N: 2000
+
+# --- Sampling ---
+Method: Predictor-Corrector (PC)
+Predictor: ReverseDiffusionPredictor
+Corrector: LangevinCorrector
+Probability Flow: False
+Continuous: True
+Denoise: True
+Eps: 1e-5
+
+# --- Forward Operator ---
+Type: Gaussian Blur
+Kernel Size: 9x9
+Sigma: 3.0

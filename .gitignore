@@ -26,3 +26,4 @@ dist/
 
 # Other
 *.DS_Store
+workdir/ve/celebahq_256_ncsnpp_continuous/checkpoints/checkpoint_48.pth
