@@ -184,42 +184,21 @@ def get_pc_colorizer(sde, predictor, corrector, inverse_scaler,
 def get_pc_compressive_sensing(sde, predictor, corrector, inverse_scaler, snr,
                                n_steps=1, probability_flow=False, continuous=False,
                                denoise=True, eps=1e-5, measurement_matrix=None, y=None, scale=1.0, shape=None):
-  """Create a compressive sensing function.
+  """Create a compressive sensing function."""
 
   Args:
-    sde: An `sde_lib.SDE` object that represents the forward SDE.
-    predictor: A subclass of `sampling.Predictor` that represents a predictor algorithm.
-    corrector: A subclass of `sampling.Corrector` that represents a corrector algorithm.
-    inverse_scaler: The inverse data normalizer.
-    snr: A `float` number. The signal-to-noise ratio for the corrector.
-    n_steps: An integer. The number of corrector steps per update of the corrector.
-    probability_flow: If `True`, predictor solves the probability flow ODE for sampling.
-    continuous: `True` indicates that the score-based model was trained with continuous time.
-    denoise: If `True`, add one-step denoising to final samples.
-    eps: A `float` number. The reverse-time SDE/ODE is integrated to `eps` for numerical stability.
-    measurement_matrix: A PyTorch tensor of shape [B, M, D] or [M, D] representing the measurement matrix A.
     y: A PyTorch tensor of shape [B, M] representing the observed data.
     scale: Scale of the gradient guidance.
     shape: Shape of the image [B, C, H, W].
 
   Returns:
     A compressive sensing function.
-  """
-  # Define predictor & corrector
-  predictor_update_fn = functools.partial(shared_predictor_update_fn,
-                                          sde=sde,
-                                          predictor=predictor,
-                                          probability_flow=probability_flow,
-                                          continuous=continuous)
-  corrector_update_fn = functools.partial(shared_corrector_update_fn,
-                                          sde=sde,
-                                          corrector=corrector,
-                                          continuous=continuous,
                                           snr=snr,
                                           n_steps=n_steps)
 
   def get_cs_update_fn(update_fn):
     """Modify the update function of predictor & corrector to incorporate data information."""
+
 
     def cs_update_fn(model, x, t):
       def wrapper(x_in, t_in):
@@ -230,7 +209,11 @@ def get_pc_compressive_sensing(sde, predictor, corrector, inverse_scaler, snr,
         
           # Estimate x_0_hat using Tweedie's formula
           ones = torch.ones_like(x_in)
-          mean_ones, std_t = sde.marginal_prob(ones, t_in)
+          if t_in.mean() > 1.0:
+            std_t = t_in
+            mean_ones = ones
+          else:
+            mean_ones, std_t = sde.marginal_prob(ones, t_in)
           alpha_t = mean_ones / ones
           
           # Clamp score to prevent explosion
@@ -266,10 +249,11 @@ def get_pc_compressive_sensing(sde, predictor, corrector, inverse_scaler, snr,
               grad = torch.zeros_like(grad)
           
           # Robustness: Clamp gradient
-          grad = torch.clamp(grad, -0.1, 0.1)
+          # grad = torch.clamp(grad, -0.1, 0.1)
           
           return score - scale * grad
 
+      wrapper.eval = lambda: None
       return update_fn(x, t, model=wrapper)
 
     return cs_update_fn
@@ -292,7 +276,9 @@ def get_pc_compressive_sensing(sde, predictor, corrector, inverse_scaler, snr,
         raise ValueError("Shape must be provided for compressive sensing.")
         
       x = sde.prior_sampling(shape).to(y.device)
+      print(f"DEBUG: sde.T={sde.T}, eps={eps}, sde.N={sde.N}")
       timesteps = torch.linspace(sde.T, eps, sde.N)
+      print(f"DEBUG: timesteps[0]={timesteps[0]}, timesteps[-1]={timesteps[-1]}")
       
       for i in range(sde.N):
         t = timesteps[i]

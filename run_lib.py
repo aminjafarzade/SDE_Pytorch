@@ -893,6 +893,12 @@ def evaluate_cs(config, workdir, eval_folder="eval_cs"):
   eval_dir = os.path.join(workdir, eval_folder)
   os.makedirs(eval_dir, exist_ok=True)
   logging.info("[Eval CS] eval_dir = %s", eval_dir)
+  
+  # Set fixed seed for reproducibility
+  torch.manual_seed(42)
+  np.random.seed(42)
+  if tf is not None:
+      tf.random.set_seed(42)
 
   # Build data pipeline
   if config.data.dataset == 'CIFAR10':
@@ -1009,9 +1015,9 @@ def evaluate_cs(config, workdir, eval_folder="eval_cs"):
     # Measurement Matrix Construction
     C, H, W = config.data.num_channels, config.data.image_size, config.data.image_size
     D = C * H * W
-    M = D // 32 # 32x compression for CelebA-HQ to save memory/time
+    M = D // 8 # 8x compression for better identity preservation
     
-    logging.info(f"[Eval CS] Starting reconstruction loop. D={D}, M={M} (3.125%)")
+    logging.info(f"[Eval CS] Starting reconstruction loop. D={D}, M={M} (12.5%)")
     
     num_eval_batches = 1 
     
@@ -1068,7 +1074,7 @@ def evaluate_cs(config, workdir, eval_folder="eval_cs"):
       # CS Sampler
       # Use lower SNR and Scale for stability
       cs_snr = 0.05 # Lower SNR for inverse problems
-      cs_scale = 0.5 # Lower scale
+      cs_scale = 2.0 # Increased scale for better identity preservation
       
       cs_fn = controllable_generation.get_pc_compressive_sensing(
           sde, predictor, corrector, inverse_scaler, snr=cs_snr,
@@ -1092,6 +1098,10 @@ def evaluate_cs(config, workdir, eval_folder="eval_cs"):
         image_grid = make_grid_local(x_recon, nrow=int(np.sqrt(B)), padding=2)
         with open(os.path.join(eval_dir, f"ckpt_{ckpt}_recon.png"), "wb") as fout:
           save_image_local(image_grid, fout)
+          
+        image_grid_true = make_grid_local(x_true, nrow=int(np.sqrt(B)), padding=2)
+        with open(os.path.join(eval_dir, f"ckpt_{ckpt}_truth.png"), "wb") as fout:
+          save_image_local(image_grid_true, fout)
           
     # Save stats
     all_mse = np.array(all_mse)
